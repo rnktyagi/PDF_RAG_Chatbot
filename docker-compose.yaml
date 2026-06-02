@@ -9,7 +9,6 @@ services:
       - "8000:8000"
     env_file:
       - .env
-    # This prevents the container from crashing immediately if it hits a tiny error
     restart: always 
 
   frontend:
@@ -20,7 +19,6 @@ services:
       - "8501:8501"
     env_file:
       - .env
-    # Tells Docker to start the backend BEFORE it starts the frontend
     depends_on:
       - backend
     restart: always
