@@ -1,0 +1,15 @@
+# Virtual Environments
+.venv/
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Git
+.git/
+
+# Ignore local database files if Qdrant creates any locally
+qdrant_storage/
