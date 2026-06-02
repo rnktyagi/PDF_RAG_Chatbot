@@ -2,8 +2,6 @@ from docling.document_converter import DocumentConverter
 from docling.chunking import HybridChunker
 from transformers import AutoTokenizer
 from langchain_core.documents import Document
-from docling_core.transforms.chunker.tokenizer.openai import OpenAITokenizer
-
 
 def ingestion_and_chunking(file_path : str) :
 

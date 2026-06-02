@@ -33,7 +33,7 @@ with st.sidebar:
                 # Send the POST request to your local FastAPI server
                 try:
                     response = requests.post(
-                        "http://127.0.0.1:8000", 
+                        "http://127.0.0.1:8000/upload", 
                         files=files,
                         data=payload_data
                     )
@@ -74,7 +74,7 @@ if prompt := st.chat_input("Ask a question about your documents..."):
         
         try:
             # Send the question to your LangGraph backend
-            chat_response = requests.post("http://127.0.0.1:8000", json=payload)
+            chat_response = requests.post("http://127.0.0.1:8000/chat", json=payload)
             
             if chat_response.status_code == 200:
                 # Extract the answer from the JSON response
