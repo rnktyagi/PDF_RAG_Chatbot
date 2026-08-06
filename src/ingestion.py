@@ -2,11 +2,14 @@ from docling.document_converter import DocumentConverter
 from docling.chunking import HybridChunker
 from transformers import AutoTokenizer
 from langchain_core.documents import Document
+from docling.datamodel.base_models import DocumentStream
+from io import BytesIO
 
-def ingestion_and_chunking(file_path : str) :
+def ingestion_and_chunking(file_bytes: bytes, filename: str) :
 
     converter = DocumentConverter()
-    result = converter.convert(file_path)
+    source = DocumentStream(name=filename, stream=BytesIO(file_bytes))
+    result = converter.convert(source)
 
     tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 

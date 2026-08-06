@@ -1,9 +1,10 @@
 import os
 from dotenv import load_dotenv
-from qdrant_client import QdrantClient
-from qdrant_client import models
-from fastembed import TextEmbedding, SparseTextEmbedding
+
+from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
+from langchain_community.embeddings import FastEmbedEmbeddings
 from fastembed.rerank.cross_encoder import TextCrossEncoder
+from qdrant_client import models
 
 load_dotenv()
 
@@ -12,74 +13,59 @@ qdrant_url = os.getenv("QDRANT_URL")
 
 
 class Retriever:
-    def __init__(self, collection_name="pdf_rag"):
+    def __init__(self, collection_name: str = "pdf_rag"):
         self.collection_name = collection_name
-        self.client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
 
-        self.dense_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        self.sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
+        dense_embeddings = FastEmbedEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
+
+        # This one object replaces the client, both embed calls, both
+        # Prefetch blocks, and the FusionQuery(RRF) call from before.
+        self.vector_store = QdrantVectorStore.from_existing_collection(
+            embedding=dense_embeddings,
+            sparse_embedding=sparse_embeddings,
+            collection_name=collection_name,
+            url=qdrant_url,
+            api_key=qdrant_api_key,
+            retrieval_mode=RetrievalMode.HYBRID,
+            vector_name="dense",
+            sparse_vector_name="sparse",
+        )
 
         self.reranker = TextCrossEncoder(model_name="Xenova/ms-marco-MiniLM-L-6-v2")
 
-    def retrieve(self, query: str, user_id: str):
-        dense_query_vector = list(self.dense_model.embed([query]))[0]
-
-        sparse_query = list(self.sparse_model.embed([query]))[0]
-        sparse_query_vector = models.SparseVector(
-            indices=sparse_query.indices,
-            values=sparse_query.values
-        )
-
+    def retrieve(self, query: str, user_id: str, top_k: int = 5):
         user_filter = models.Filter(
             must=[
                 models.FieldCondition(
-                    key="user_id",
-                    match=models.MatchValue(value=user_id)
+                    key="metadata.user_id",
+                    match=models.MatchValue(value=user_id),
                 )
             ]
         )
 
-        results = self.client.query_points(
-            collection_name=self.collection_name,
-            prefetch=[
-                models.Prefetch(
-                    query=dense_query_vector,
-                    limit=20,
-                    using="dense",
-                    filter=user_filter
-                ),
-                models.Prefetch(
-                    query=sparse_query_vector,
-                    using="sparse",
-                    limit=20,
-                    filter=user_filter
-                )
-            ],
-            query=models.FusionQuery(fusion=models.Fusion.RRF),
-            limit=20
+        # Runs the hybrid (dense + sparse, RRF-fused) search under the hood
+        results = self.vector_store.similarity_search_with_score(
+            query,
+            k=20,
+            filter=user_filter,
         )
 
-        texts = [
-            point.payload.get("text", "")
-            for point in results.points
-        ]
-
+        texts = [doc.page_content for doc, _ in results]
         rerank_scores = list(self.reranker.rerank(query, texts))
 
-        reranked_results = []
+        reranked_results = [
+            {
+                "text": doc.page_content,
+                "source": doc.metadata.get("source"),
+                "pages": doc.metadata.get("pages"),
+                "section": doc.metadata.get("section"),
+                "original_qdrant_score": score,
+                "rerank_score": float(rerank_score),
+            }
+            for (doc, score), rerank_score in zip(results, rerank_scores)
+        ]
 
-        for point, score in zip(results.points, rerank_scores):
-            reranked_results.append({
-                "text": point.payload.get("text"),
-                "source": point.payload.get("source"),
-                "pages": point.payload.get("pages"),
-                "section": point.payload.get("section"),
-                "original_qdrant_score": point.score,
-                "rerank_score": float(score)
-            })
+        reranked_results.sort(key=lambda x: x["rerank_score"], reverse=True)
 
-        reranked_results.sort(key=lambda x: x["rerank_score"],reverse=True)
-
-        final_top_results = reranked_results[:5]
-
-        return final_top_results
+        return reranked_results[:top_k]
