@@ -1,126 +1,93 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Form
-from pydantic import BaseModel, Field
 import os
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-from src.graph import workflow
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from src.graph import build_agent, AgentContext
 from src.embedding import upload_file
-import shutil
-from langgraph.checkpoint.postgres import PostgresSaver
+import asyncio
 
 load_dotenv()
 
+DB_URI = os.getenv("DATABASE_URI")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with AsyncPostgresSaver.from_conn_string(DB_URI) as checkpointer:
+        await checkpointer.setup() 
+        app.state.agent = build_agent(checkpointer)
+        yield
+    
 app = FastAPI(
     title="Enterprise PDF RAG API",
-    description="A production-grade backend powering an intelligent LangGraph agent.",
-    version="1.0.0"
+    description="A production-grade backend powering an agentic LangChain RAG assistant.",
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(
-        ...,
-        description="The raw message string from the user."
-    )
-    user_id: str = Field(
-        ...,
-        description="The unique identifier for the tenant context."
-    )
-    thread_id: str = Field(
-        ...,
-        description="The unique session ID tracking the short-term chat history."
-    )
+    message: str = Field(..., min_length=1, description="The raw message string from the user.")
+    user_id: str = Field(..., min_length=1, description="The unique identifier for the tenant context.")
+    thread_id: str = Field(..., min_length=1, description="The unique session ID tracking the short-term chat history.")
 
 
-@app.post(
-    "/chat",
-    summary="Return an answer using the RAG backend to the user query."
-)
+class ChatResponse(BaseModel):
+    status: str
+    thread_id: str
+    response: str
+
+
+@app.post("/chat",response_model=ChatResponse,summary="Return an answer using the RAG backend to the user query.",)
 async def chat_endpoint(request: ChatRequest):
+    agent = app.state.agent  
+
+    config = {"configurable": {"thread_id": request.thread_id}}
+
     try:
-        config = {
-            "configurable": {
-                "thread_id": request.thread_id
-            }
-        }
-
-        initial_state = {
-            "messages": [("user", request.message)],
-            "user_id": request.user_id
-        }
-
-        db_uri = os.getenv("DATABASE_URI")
-
-        with PostgresSaver.from_conn_string(db_uri) as checkpointer:
-            checkpointer.setup()
-
-            agent = workflow.compile(
-                checkpointer=checkpointer
-            )
-
-            result = agent.invoke(
-                initial_state,
-                config=config
-            )
-
-        output_messages = result.get("messages", [])
-
-        if not output_messages:
-            raise ValueError(
-                "No messages returned from the graph."
-            )
-
-        ai_response = output_messages[-1].content
-
-        return {
-            "status": "success",
-            "thread_id": request.thread_id,
-            "response": ai_response
-        }
-
-    except Exception as e:
-        print(f"Backend Error: {str(e)}")
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Agent Processing Error: {str(e)}"
+        result = await agent.ainvoke(
+            {"messages": [{"role": "user", "content": request.message}]},
+            config=config,
+            context=AgentContext(user_id=request.user_id),
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Agent processing error") from e
 
+    output_messages = result.get("messages", [])
+    if not output_messages:
+        raise HTTPException(status_code=500, detail="No messages returned from the agent.")
 
-UPLOAD_DIR = "data/uploads"
-
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-
-@app.post(
-    "/upload",
-    summary="Upload a PDF and process its embeddings in the background"
-)
-async def upload_pdf(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    user_id: str = Form(...)
-):
-    local_file_path = os.path.join(
-        UPLOAD_DIR,
-        file.filename
+    return ChatResponse(
+        status="success",
+        thread_id=request.thread_id,
+        response=output_messages[-1].content,
     )
 
-    with open(local_file_path, "wb") as buffer:
-        shutil.copyfileobj(
-            file.file,
-            buffer
-        )
 
-    background_tasks.add_task(
+@app.post("/upload", summary="Upload a PDF and process its embeddings in the background",)
+async def upload_pdf(
+    file: UploadFile = File(...),
+    user_id: str = Form(..., min_length=1),
+):
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+
+    await asyncio.to_thread(
         upload_file,
-        local_file_path,
-        user_id
+        file_bytes,
+        file.filename,
+        user_id,
     )
 
     return {
         "status": "success",
-        "message": (
-            f"'{file.filename}' received successfully. "
-            "Ingestion pipeline started in the background."
-        )
+        "message": "Document processed. You can now ask questions."
     }

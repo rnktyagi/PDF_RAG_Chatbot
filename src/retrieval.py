@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
-from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from fastembed.rerank.cross_encoder import TextCrossEncoder
 from qdrant_client import models
 
@@ -16,11 +16,9 @@ class Retriever:
     def __init__(self, collection_name: str = "pdf_rag"):
         self.collection_name = collection_name
 
-        dense_embeddings = FastEmbedEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        dense_embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
         sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
 
-        # This one object replaces the client, both embed calls, both
-        # Prefetch blocks, and the FusionQuery(RRF) call from before.
         self.vector_store = QdrantVectorStore.from_existing_collection(
             embedding=dense_embeddings,
             sparse_embedding=sparse_embeddings,
@@ -44,7 +42,6 @@ class Retriever:
             ]
         )
 
-        # Runs the hybrid (dense + sparse, RRF-fused) search under the hood
         results = self.vector_store.similarity_search_with_score(
             query,
             k=20,

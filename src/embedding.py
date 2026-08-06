@@ -4,18 +4,22 @@ from dotenv import load_dotenv
 
 from src.ingestion import ingestion_and_chunking
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
-from langchain_community.embeddings import FastEmbedEmbeddings
+
+from langchain_huggingface import HuggingFaceEmbeddings
+
+
 
 load_dotenv()
 
 qdrant_api_key = os.getenv("QDRANT_API_KEY")
 qdrant_url = os.getenv("QDRANT_URL")
 
-dense_embeddings = FastEmbedEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+dense_embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
 
-def upload_file():
-    docs = ingestion_and_chunking(file_path)
+def upload_file(file_bytes: bytes, filename: str, user_id: str, collection_name: str = "pdf_rag"):
+    docs = ingestion_and_chunking(file_bytes, filename)
+
     file_id = str(uuid.uuid4())
     for doc in docs:
         doc.metadata["user_id"] = user_id
