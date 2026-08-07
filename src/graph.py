@@ -5,15 +5,14 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langgraph.runtime import get_runtime
-
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     SummarizationMiddleware,
     PIIMiddleware,
     ToolCallLimitMiddleware,
 )
-
 from src.retrieval import Retriever
+import asyncio
 
 load_dotenv()
 
@@ -42,7 +41,7 @@ NO_CONTEXT_SENTINEL = "NO_RELEVANT_CONTEXT_FOUND"
 
 
 @tool
-def retrieve_documents(query: str) -> str:
+async def retrieve_documents(query: str) -> str:
     """Search the user's uploaded documents for information relevant to a question.
 
     Use this whenever answering requires facts, figures, or specifics that could
@@ -61,7 +60,7 @@ def retrieve_documents(query: str) -> str:
     runtime = get_runtime(AgentContext)
     user_id = runtime.context.user_id
 
-    results = retriever.retrieve(query, user_id)
+    results = await asyncio.to_thread(retriever.retrieve, query, user_id)
 
     if not results:
         return NO_CONTEXT_SENTINEL
@@ -175,10 +174,7 @@ middleware = [
 
 
 def build_agent(checkpointer):
-    """Build the compiled agent. `checkpointer` is created and its connection
-    pool opened in the FastAPI app (see notes below) and passed in here --
-    graph.py itself stays storage-agnostic and doesn't own the connection.
-    """
+    
     return create_agent(
         model=llm,
         tools=[retrieve_documents],

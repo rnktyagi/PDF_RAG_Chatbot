@@ -1,8 +1,7 @@
 import os
 from dotenv import load_dotenv
-
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from fastembed.rerank.cross_encoder import TextCrossEncoder
 from qdrant_client import models
 

@@ -1,13 +1,9 @@
 import uuid
 import os
 from dotenv import load_dotenv
-
 from src.ingestion import ingestion_and_chunking
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
-
 from langchain_huggingface import HuggingFaceEmbeddings
-
-
 
 load_dotenv()
 
@@ -44,5 +40,5 @@ def upload_file(file_bytes: bytes, filename: str, user_id: str, collection_name:
             field_schema="keyword",
         )
     except Exception:
-        pass
+        print("Failed")
     return vector_store

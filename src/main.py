@@ -13,7 +13,6 @@ load_dotenv()
 
 DB_URI = os.getenv("DATABASE_URI")
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with AsyncPostgresSaver.from_conn_string(DB_URI) as checkpointer:
@@ -25,23 +24,20 @@ app = FastAPI(
     title="Enterprise PDF RAG API",
     description="A production-grade backend powering an agentic LangChain RAG assistant.",
     version="2.0.0",
-    lifespan=lifespan,
+    lifespan=lifespan
 )
 
-
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, description="The raw message string from the user.")
-    user_id: str = Field(..., min_length=1, description="The unique identifier for the tenant context.")
-    thread_id: str = Field(..., min_length=1, description="The unique session ID tracking the short-term chat history.")
-
+    message: str = Field(...)
+    user_id: str = Field(...)
+    thread_id: str = Field(...)
 
 class ChatResponse(BaseModel):
     status: str
     thread_id: str
     response: str
 
-
-@app.post("/chat",response_model=ChatResponse,summary="Return an answer using the RAG backend to the user query.",)
+@app.post("/chat",response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
     agent = app.state.agent  
 
@@ -66,12 +62,8 @@ async def chat_endpoint(request: ChatRequest):
         response=output_messages[-1].content,
     )
 
-
-@app.post("/upload", summary="Upload a PDF and process its embeddings in the background",)
-async def upload_pdf(
-    file: UploadFile = File(...),
-    user_id: str = Form(..., min_length=1),
-):
+@app.post("/upload")
+async def upload_pdf(file: UploadFile = File(...),user_id: str = Form(..., min_length=1) ):
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
     
@@ -80,12 +72,7 @@ async def upload_pdf(
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
 
-    await asyncio.to_thread(
-        upload_file,
-        file_bytes,
-        file.filename,
-        user_id,
-    )
+    await asyncio.to_thread(upload_file,file_bytes,file.filename,user_id)
 
     return {
         "status": "success",
