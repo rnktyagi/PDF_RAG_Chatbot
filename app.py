@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import uuid
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = "https://lightrt-pdf-rag.hf.space"
 
 st.set_page_config(page_title="PDF RAG Chatbot", page_icon="📄")
 
