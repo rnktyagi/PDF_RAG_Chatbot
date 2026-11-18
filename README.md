@@ -139,9 +139,16 @@ Example request:
 
 ## Author
 
-**Rohit Tyagi**
+**Raunak Tyagi**
 
-GitHub: [rnktyagi](https://github.com/rnktyagi)
+GitHub: (https://github.com/rnktyagi)
+
+## Contributors
+**Rajbir Singh**
+Github: (https://github.com/rjvrr)
+
+**Ranti Dev**
+Github: (https://github.com/rantidev1802)
 
 ## Repository
 
